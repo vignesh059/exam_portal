@@ -1,0 +1,90 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Student Details</title>
+  <style>
+    body { font-family: Arial, sans-serif; background:#f5f6f8; display:flex; min-height:100vh; align-items:center; justify-content:center; }
+    .card { width: 380px; background:#fff; padding:20px; border-radius:12px; box-shadow:0 8px 24px rgba(0,0,0,.08); }
+    label { display:block; font-size:13px; margin:10px 0 6px; }
+    input, button { width:100%; padding:10px; border-radius:10px; border:1px solid #d7dbe0; }
+    button { margin-top:14px; background:#2563eb; color:#fff; border:none; cursor:pointer; font-weight:600; }
+    .msg { margin-top:12px; font-size:13px; padding:10px; border-radius:10px; display:none; }
+    .ok { background:#e9fbe9; border:1px solid #b7f0b7; color:#166534; }
+    .bad { background:#fff1f2; border:1px solid #fecdd3; color:#9f1239; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2>Enter Student Details</h2>
+
+    <label for="rollNo">Roll No</label>
+    <input id="rollNo" placeholder="Enter roll no" />
+
+    <label for="branch">Branch</label>
+    <input id="branch" placeholder="CSE / ECE / MECH ..." />
+
+    <label for="semester">Semester</label>
+    <input id="semester" type="number" min="1" max="12" placeholder="1 - 12" />
+
+    <button id="save" type="button">Submit</button>
+    <button id="logout" type="button" style="background:#111827;">Logout</button>
+
+    <div id="msg" class="msg"></div>
+  </div>
+
+  <script>
+    // must come after successful login
+    if (localStorage.getItem("role") !== "student") {
+      window.location.href = "/";
+    }
+
+    const msgEl = document.getElementById("msg");
+    function showMessage(text, ok) {
+      msgEl.textContent = text;
+      msgEl.className = "msg " + (ok ? "ok" : "bad");
+      msgEl.style.display = "block";
+    }
+
+    // prefill rollNo from login
+    const storedRoll = localStorage.getItem("rollNo") || "";
+    document.getElementById("rollNo").value = storedRoll;
+
+    document.getElementById("save").onclick = async () => {
+      const rollNo = document.getElementById("rollNo").value.trim();
+      const branch = document.getElementById("branch").value.trim();
+      const semester = document.getElementById("semester").value.trim();
+
+      if (!rollNo || !branch || !semester) {
+        showMessage("Fill roll no, branch, semester.", false);
+        return;
+      }
+
+      const res = await fetch("/api/student/details", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rollNo, branch, semester })
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showMessage(data.message || "Failed to save", false);
+        return;
+      }
+
+      // store updated rollNo just in case
+      localStorage.setItem("rollNo", rollNo);
+      showMessage("Details saved successfully.", true);
+
+      // OPTIONAL: redirect somewhere after saving
+      // window.location.href = "/student-dashboard.html";
+    };
+
+    document.getElementById("logout").onclick = () => {
+      localStorage.clear();
+      window.location.href = "/";
+    };
+  </script>
+</body>
+</html>

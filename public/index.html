@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Role Login</title>
+  <style>
+    body { font-family: Arial, sans-serif; background:#f5f6f8; display:flex; min-height:100vh; align-items:center; justify-content:center; }
+    .card { width: 360px; background:#fff; padding:20px; border-radius:12px; box-shadow:0 8px 24px rgba(0,0,0,.08); }
+    h2 { margin:0 0 14px; font-size:18px; }
+    label { display:block; font-size:13px; margin:10px 0 6px; color:#333; }
+    input, select, button { width:100%; padding:10px; border-radius:10px; border:1px solid #d7dbe0; }
+    button { margin-top:14px; background:#2563eb; color:#fff; border:none; cursor:pointer; font-weight:600; }
+    button:hover { background:#1d4ed8; }
+    .msg { margin-top:12px; font-size:13px; padding:10px; border-radius:10px; display:none; }
+    .ok { background:#e9fbe9; border:1px solid #b7f0b7; color:#166534; }
+    .bad { background:#fff1f2; border:1px solid #fecdd3; color:#9f1239; }
+    .hint { margin-top:10px; color:#666; font-size:12px; line-height:1.3; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2>Login</h2>
+
+    <label for="role">Role</label>
+    <select id="role">
+      <option value="student">Student</option>
+      <option value="admin">Admin</option>
+    </select>
+
+    <label for="roll">Roll No</label>
+    <input id="roll" placeholder="Enter roll no" />
+
+    <label for="pass">Password</label>
+    <input id="pass" type="password" placeholder="Enter password" />
+
+    <button id="btn" type="button">Sign in</button>
+
+    <div id="msg" class="msg"></div>
+
+    <!-- <div class="hint">
+      Student: password must be same as roll no.<br/>
+      Admin: roll no = admin and password = admin.
+    </div> -->
+  </div>
+
+  <script>
+    const msgEl = document.getElementById("msg");
+
+    function showMessage(text, ok) {
+      msgEl.textContent = text;
+      msgEl.className = "msg " + (ok ? "ok" : "bad");
+      msgEl.style.display = "block";
+    }
+
+    document.getElementById("btn").addEventListener("click", async () => {
+      const role = document.getElementById("role").value;
+      const rollNo = document.getElementById("roll").value.trim();
+      const password = document.getElementById("pass").value.trim();
+
+      if (!rollNo || !password) {
+        showMessage("Please enter roll no and password.", false);
+        return;
+      }
+
+      try {
+        const res = await fetch("/api/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ role, rollNo, password })
+        });
+
+        const data = await res.json().catch(() => ({}));
+
+        if (!res.ok) {
+          showMessage(data.message || "Login failed", false);
+          return;
+        }
+
+        if (role === "admin") {
+          localStorage.setItem("role", "admin");
+          window.location.href = "/admin.html";
+        } else {
+          localStorage.setItem("role", "student");
+          localStorage.setItem("rollNo", rollNo);
+
+          if (data?.user?.detailsSubmitted !== undefined) {
+            localStorage.setItem("detailsSubmitted", String(data.user.detailsSubmitted));
+          }
+
+          window.location.href = "/student.html";
+        }
+      } catch (e) {
+        showMessage("Server not reachable. Start backend first.", false);
+      }
+    });
+  </script>
+</body>
+</html>

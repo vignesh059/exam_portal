@@ -1,0 +1,29 @@
+services:
+  mongo:
+    image: mongo:7
+    container_name: role_login_mongo
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+
+  app:
+    build: .
+    container_name: role_login_app
+    restart: unless-stopped
+    depends_on:
+      - mongo
+    ports:
+      - "3000:3000"
+    environment:
+      - MONGODB_URI=mongodb://mongo:27017/role_login
+      - PORT=3000
+      # # if you are using the JWT-based version:
+      # - JWT_SECRET=change_this_to_a_long_random_secret
+      # - CORS_ORIGIN=http://localhost:3000
+      # - ADMIN_USERNAME=admin
+      # - ADMIN_PASSWORD=admin
+
+volumes:
+  mongo_data:

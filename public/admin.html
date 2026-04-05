@@ -1,0 +1,316 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Admin</title>
+  <style>
+    body { font-family: Arial, sans-serif; background:#f5f6f8; padding:20px; }
+    .card { max-width: 980px; background:#fff; padding:18px; border-radius:12px; box-shadow:0 8px 24px rgba(0,0,0,.08); }
+    .row { display:flex; gap:12px; align-items:end; flex-wrap:wrap; }
+    label { display:block; font-size:13px; margin:10px 0 6px; }
+    input, select, button { padding:10px; border-radius:10px; border:1px solid #d7dbe0; }
+    select, input { min-width: 220px; }
+    button { background:#2563eb; color:#fff; border:none; cursor:pointer; font-weight:600; }
+    button.secondary { background:#111827; }
+    table { width:100%; border-collapse:collapse; margin-top:16px; }
+    th, td { border:1px solid #e5e7eb; padding:10px; text-align:left; font-size:14px; vertical-align: top; }
+    th { background:#f3f4f6; }
+    .muted { color:#6b7280; font-size:13px; margin-top:8px; }
+    .msg { margin-top:12px; font-size:13px; padding:10px; border-radius:10px; display:none; }
+    .ok { background:#e9fbe9; border:1px solid #b7f0b7; color:#166534; }
+    .bad { background:#fff1f2; border:1px solid #fecdd3; color:#9f1239; }
+
+    /* Seating table */
+    .seatRoll { font-weight:700; }
+    .seatBranch { color:#6b7280; font-size:12px; margin-top:4px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2>Admin Panel</h2>
+
+    <div class="row">
+      <div>
+        <label for="semester">Select Semester</label>
+        <select id="semester">
+          <option value="">-- select --</option>
+          <option value="1">1</option><option value="2">2</option><option value="3">3</option>
+          <option value="4">4</option><option value="5">5</option><option value="6">6</option>
+          <option value="7">7</option><option value="8">8</option>
+        </select>
+      </div>
+
+      <div>
+        <label for="branch">Branch (optional)</label>
+        <input id="branch" placeholder="CSE / ECE / IT / MECH ..." />
+      </div>
+
+      <button id="load" type="button">Load Students</button>
+      <button id="seating" type="button">Generate Seating (4 cols)</button>
+      <button class="secondary" id="logout" type="button">Logout</button>
+    </div>
+
+    <div id="msg" class="msg"></div>
+    <div class="muted" id="count"></div>
+
+    <!-- Students list table -->
+    <table id="table" style="display:none;">
+      <thead>
+        <tr>
+          <th>S.No</th>
+          <th>Roll No</th>
+          <th>Branch</th>
+          <th>Semester</th>
+          <th>Submitted At</th>
+        </tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+
+    <!-- Seating plan -->
+    <h3 style="margin-top:18px;">Seating Plan (4 Columns)</h3>
+    <div id="seatMsg" class="msg"></div>
+
+    <table id="seatTable" style="display:none; margin-top:12px;">
+      <thead>
+        <tr>
+          <th>1</th>
+          <th>2</th>
+          <th>3</th>
+          <th>4</th>
+        </tr>
+      </thead>
+      <tbody id="seatBody"></tbody>
+    </table>
+  </div>
+
+  <script>
+    // Simple client-side guard (demo)
+    if (localStorage.getItem("role") !== "admin") {
+      window.location.href = "/";
+    }
+
+    const msgEl = document.getElementById("msg");
+    const tableEl = document.getElementById("table");
+    const tbodyEl = document.getElementById("tbody");
+    const countEl = document.getElementById("count");
+
+    const seatMsgEl = document.getElementById("seatMsg");
+    const seatTableEl = document.getElementById("seatTable");
+    const seatBodyEl = document.getElementById("seatBody");
+
+    function showMessage(text, ok) {
+      msgEl.textContent = text;
+      msgEl.className = "msg " + (ok ? "ok" : "bad");
+      msgEl.style.display = "block";
+    }
+    function hideMessage() { msgEl.style.display = "none"; }
+
+    function showSeatMessage(text, ok) {
+      seatMsgEl.textContent = text;
+      seatMsgEl.className = "msg " + (ok ? "ok" : "bad");
+      seatMsgEl.style.display = "block";
+    }
+    function hideSeatMessage() { seatMsgEl.style.display = "none"; }
+
+    function renderStudentsTable(students) {
+      tbodyEl.innerHTML = "";
+      students.forEach((s, idx) => {
+        const submittedAt = s.updatedAt ? new Date(s.updatedAt).toLocaleString() : "";
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${idx + 1}</td>
+          <td>${s.rollNo || ""}</td>
+          <td>${s.branch || ""}</td>
+          <td>${s.semester ?? ""}</td>
+          <td>${submittedAt}</td>
+        `;
+        tbodyEl.appendChild(tr);
+      });
+      tableEl.style.display = students.length ? "table" : "none";
+    }
+
+    async function fetchStudents() {
+      const semester = document.getElementById("semester").value;
+      const branch = document.getElementById("branch").value.trim();
+
+      if (!semester) {
+        showMessage("Please select a semester.", false);
+        return null;
+      }
+
+      const params = new URLSearchParams({ semester });
+      if (branch) params.set("branch", branch);
+
+      const res = await fetch(`/api/admin/students?${params.toString()}`);
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        showMessage(data.message || "Failed to load students", false);
+        return null;
+      }
+
+      return data;
+    }
+
+    // ---------------- Seating plan helpers (4 cols, dynamic rows) ----------------
+    function shuffle(arr) {
+      const a = [...arr];
+      for (let i = a.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [a[i], a[j]] = [a[j], a[i]];
+      }
+      return a;
+    }
+
+    function hasSameBranchNeighborDynamic(grid, r, c, branch) {
+      const dirs = [
+        [-1, 0], [1, 0], // up, down
+        [0, -1], [0, 1]  // left, right
+      ];
+      for (const [dr, dc] of dirs) {
+        const rr = r + dr, cc = c + dc;
+        if (rr >= 0 && rr < grid.length && cc >= 0 && cc < 4) {
+          const n = grid[rr][cc];
+          if (n && n.branch === branch) return true;
+        }
+      }
+      return false;
+    }
+
+    function buildSeatingNoSameNeighborsAll(students) {
+      if (!students || students.length === 0) {
+        return { ok: false, message: "No students found for this filter." };
+      }
+
+      const cleaned = students.map(s => ({
+        rollNo: String(s.rollNo || "").trim(),
+        branch: String(s.branch || "").trim().toUpperCase()
+      }));
+
+      if (cleaned.some(s => !s.rollNo)) {
+        return { ok: false, message: "Some students are missing rollNo." };
+      }
+      if (cleaned.some(s => !s.branch)) {
+        return { ok: false, message: "Some students did not submit branch. Ask them to submit details first." };
+      }
+
+      const rows = Math.ceil(cleaned.length / 4);
+      const totalCells = rows * 4;
+
+      for (let attempt = 0; attempt < 800; attempt++) {
+        const list = shuffle(cleaned);
+        const grid = Array.from({ length: rows }, () => Array(4).fill(null));
+
+        let ok = true;
+
+        for (let idx = 0; idx < totalCells && ok; idx++) {
+          const r = Math.floor(idx / 4);
+          const c = idx % 4;
+
+          if (list.length === 0) break; // remaining cells stay empty
+
+          let placed = false;
+          for (let i = 0; i < list.length; i++) {
+            const cand = list[i];
+            if (!hasSameBranchNeighborDynamic(grid, r, c, cand.branch)) {
+              grid[r][c] = cand;
+              list.splice(i, 1);
+              placed = true;
+              break;
+            }
+          }
+          if (!placed) ok = false;
+        }
+
+        if (ok && list.length === 0) return { ok: true, grid };
+      }
+
+      return {
+        ok: false,
+        message:
+          "Could not generate a valid seating plan with the no-neighbor rule for all students. " +
+          "Try again, or relax the rule (allow same-branch neighbors)."
+      };
+    }
+
+    function renderSeating4ColsDynamic(grid) {
+      seatBodyEl.innerHTML = "";
+
+      for (let r = 0; r < grid.length; r++) {
+        const tr = document.createElement("tr");
+
+        for (let c = 0; c < 4; c++) {
+          const s = grid[r][c];
+          const td = document.createElement("td");
+
+          if (s) {
+            td.innerHTML = `
+              <div class="seatRoll">${s.rollNo}</div>
+              <div class="seatBranch">${s.branch}</div>
+            `;
+          } else {
+            td.textContent = "-";
+          }
+
+          tr.appendChild(td);
+        }
+        seatBodyEl.appendChild(tr);
+      }
+
+      seatTableEl.style.display = "table";
+    }
+
+    // ---------------- Buttons ----------------
+
+    // Load Students button (shows ALL students in the main table)
+    document.getElementById("load").onclick = async () => {
+      hideMessage();
+      tableEl.style.display = "none";
+      countEl.textContent = "";
+
+      // reset seating UI only
+      hideSeatMessage();
+      seatTableEl.style.display = "none";
+
+      const data = await fetchStudents();
+      if (!data) return;
+
+      const studentsAll = data.students || [];
+      const bTxt = data.branch ? `, Branch ${data.branch}` : "";
+      countEl.textContent = `Semester ${data.semester}${bTxt}: ${studentsAll.length} student(s)`;
+
+      renderStudentsTable(studentsAll);
+      if (studentsAll.length === 0) showMessage("No students found for this filter.", true);
+    };
+
+    // Generate Seating button (seating for ALL students, 4 cols, dynamic rows)
+    document.getElementById("seating").onclick = async () => {
+      hideMessage();
+      hideSeatMessage();
+      seatTableEl.style.display = "none";
+
+      const data = await fetchStudents();
+      if (!data) return;
+
+      const students = data.students || [];
+      const result = buildSeatingNoSameNeighborsAll(students);
+
+      if (!result.ok) {
+        showSeatMessage(result.message, false);
+        return;
+      }
+
+      renderSeating4ColsDynamic(result.grid);
+      showSeatMessage("Seating generated (4 columns, dynamic rows) with no same-branch neighbors.", true);
+    };
+
+    // Logout
+    document.getElementById("logout").onclick = () => {
+      localStorage.clear();
+      window.location.href = "/";
+    };
+  </script>
+</body>
+</html>
